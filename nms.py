@@ -40,3 +40,56 @@ import numpyt as np
         inds = np.where(ovr <= thresh)[0]
         order = order[inds + 1]
     return keep
+
+    # soft-NMS
+
+
+
+    # Fast-NMS    YOLACT  Fast
+    # https://blog.csdn.net/qq_40263477/article/details/103881569?utm_medium=distribute.pc_relevant.none-task-blog-baidujs-5 
+    def fast_nms(self, boxes, masks, scores, iou_threshold: float=0.5, top_k: int=200, second_treshold:bool=False):
+        '''
+        boxes: torch.size([num_dets, 4])
+        masks: torch.size([num_dets, 32])
+        scores: torch.size([num_classes, num_dets])
+        '''
+
+        # step 1: sort by score get top_k
+        scores, idx = scores.sort(1, descending=True)
+
+        idx = idx[:, :top_k].contiguous()
+        scores = scores[:, :top_k]
+        num_classes, num_dets = idx.size()
+
+        boxes = boxes[idx.view(-1), :].view(num_classes, num_dets, 4)
+        masks = masks[idx.view(-1), :].view(num_classes, num_dets, 4)
+
+        # step 2: caculate iou between boxes
+        iou = jaccard(boxes, boxes)
+        iou.triu_(diagonal=1)  # triu_()取上三角 tril_()取下三角 此处将矩阵的下三角和对角线元素删去
+        iou_max, _ = iou.max(dim=1) # 按列取大值 torch.Size([num_classes, num_dets])
+
+        keep = (iou_max <= iou_threshold)
+
+        if second_treshold:
+            keep *= (score > self.conf_thresh)
+        
+        classes = torch.arange(num_classes, device=boxes.device)[:, None].expand_as(keep)
+
+        classes = classes[keep]
+        boxes = boxes[keep]
+        masks = masks[keep]
+        scores = scores[keep]
+        # Only keep the top cfg.max_num_detections highest scores across all classes
+        scores, idx = scores.sort(0, descending=True)
+        idx = idx[:cfg.max_num_detections]
+        scores = scores[:cfg.max_num_detections]
+        classes = classes[idx]
+        boxes = boxes[idx]
+        masks = masks[idx]
+        return boxes, masks, classes, scores
+
+
+
+
+
